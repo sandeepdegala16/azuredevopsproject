@@ -1,25 +1,46 @@
-pr: none
 trigger:
+  batch: true
   branches:
     include:
-    - master
+    - '*'
   paths:
-    include:
-    - deploy-agent-vms/
+    exclude:
+    - README.md
+    - azure-pipeline.png
+    
+pr: none
 
 variables:
-- group: terraform-secrets
+  terraformVersion: 0.12.26
+  tfFilesArtifactName: 'tf-files'
+  skipComponentGovernanceDetection: true
+  
+pool:
+ #vmImage: 'ubuntu-latest'
+ name: mabenoittesttf
 
 stages:
-
-- template: terraform-stages-template.yml
+- stage: 'prepare'
+  displayName: 'prepare'
+  jobs:
+  - job: 'prepare'
+    displayName: 'prepare'
+    steps:
+    - publish: '$(system.defaultWorkingDirectory)/tf'
+      artifact: $(tfFilesArtifactName)
+    - task: TerraformInstaller@0
+      inputs:
+        terraformVersion: $(terraformVersion)
+    - script: |
+        terraform init \
+            -backend=false
+        terraform validate
+      workingDirectory: $(system.defaultWorkingDirectory)/tf
+      failOnStderr: true
+      displayName: 'terraform validate'
+- template: azure-pipelines-tf-plan-apply-template.yml
   parameters:
     environment: dev
-    environmentDisplayName: Dev
-    # Pass variables as environment variables.
-    # Terraform recognizes TF_VAR prefixed environment variables.
-    TerraformEnvVariables:
-      TF_VAR_az_devops_url: $(System.TeamFoundationCollectionUri)
-      TF_VAR_az_devops_pat: $(AGENT_POOL_MANAGE_PAT_TOKEN)
-      TF_VAR_az_devops_agent_pool: starterpool
-      TF_VAR_az_devops_agent_vm_shutdown_time: 2300
+- template: azure-pipelines-tf-plan-apply-template.yml
+  parameters:
+    environment: prod
